@@ -1,0 +1,162 @@
+@startuml
+title Diagram Sekwencji - Zapisy, Rezerwacje i Zapobieganie Konfliktom
+
+actor "Kursant" as Kursant
+actor "Administrator" as Admin
+
+boundary "Portal Zapisów\n<<UI>>" as UI
+control "RezerwacjeController\n<<Control>>" as RezCtrl
+control "HarmonogramController\n<<Control>>" as HarmCtrl
+entity "GrupaPlywacka\n<<Entity>>" as Grupa
+entity "TorBasenowy\n<<Entity>>" as Tor
+entity "Rezerwacja\n<<Entity>>" as Rezerwacja
+database "BazaDanych\n<<DB>>" as DB
+
+== Rezerwacja miejsca w grupie (pojedyncze zajęcia online) ==
+
+Kursant -> UI : zapiszNaZajecia(zajecia_id)
+activate UI
+
+UI -> RezCtrl : procesujZapis(kursant_id, zajecia_id)
+activate RezCtrl
+
+RezCtrl -> Grupa : sprawdzWolneMiejsca(zajecia_id)
+activate Grupa
+
+Grupa -> Tor : pobierzLimit()
+activate Tor
+Tor --> Grupa : limit
+deactivate Tor
+
+Grupa --> RezCtrl : dostepne_miejsca
+deactivate Grupa
+
+alt dostepne_miejsca > 0
+    create Rezerwacja
+    RezCtrl -> Rezerwacja : <<create>>(kursant_id, zajecia_id)
+    
+    RezCtrl -> DB : insert(Rezerwacja)
+    activate DB
+    DB --> RezCtrl : success
+    deactivate DB
+    
+    RezCtrl --> UI : potwierdzenieZapisania
+    UI --> Kursant : "Miejsce zarezerwowane pomyślnie"
+else dostepne_miejsca == 0
+    RezCtrl --> UI : błąd("Brak wolnych miejsc")
+    UI --> Kursant : "Przekroczono bezpieczny limit toru"
+end
+
+deactivate RezCtrl
+deactivate UI
+
+== Zapis na cały cykl zajęć (Miesiąc/Semestr) ==
+
+Kursant -> UI : zapiszNaCykl(cykl_id)
+activate UI
+
+UI -> RezCtrl : zapiszNaWieleZajec(kursant_id, cykl_id)
+activate RezCtrl
+
+RezCtrl -> DB : pobierzWszystkieZajeciaDlaCyklu(cykl_id)
+activate DB
+DB --> RezCtrl : lista_zajec
+deactivate DB
+
+loop Dla każdych zajęć z lista_zajec
+    RezCtrl -> Grupa : sprawdzMiejsca(zajecia)
+    activate Grupa
+    Grupa --> RezCtrl : ok
+    deactivate Grupa
+    
+    create Rezerwacja
+    RezCtrl -> Rezerwacja : <<create>>(kursant_id, zajecia_id)
+    
+    RezCtrl -> DB : insert(Rezerwacja)
+    activate DB
+    DB --> RezCtrl : success
+    deactivate DB
+end
+
+RezCtrl --> UI : potwierdzenieCyklu
+deactivate RezCtrl
+
+UI --> Kursant : "Gwarancja miejsca na cały semestr"
+deactivate UI
+
+== Anulowanie obecności z odpowiednim wyprzedzeniem ==
+
+Kursant -> UI : anulujZajecia(rezerwacja_id)
+activate UI
+
+UI -> RezCtrl : procesujAnulowanie(rezerwacja_id)
+activate RezCtrl
+
+RezCtrl -> DB : pobierzRezerwacjeIZajecia(rezerwacja_id)
+activate DB
+DB --> RezCtrl : obiektRezerwacja, data_zajec
+deactivate DB
+
+RezCtrl -> RezCtrl : czas_do_zajec = data_zajec - teraz()
+
+alt czas_do_zajec >= timedelta(hours=24)
+    
+    ' Zmiana: Soft Delete zamiast DELETE z bazy danych
+    RezCtrl -> Rezerwacja : zmienStatus("anulowana")
+    activate Rezerwacja
+    Rezerwacja --> RezCtrl : ok
+    deactivate Rezerwacja
+    
+    RezCtrl -> DB : save(obiektRezerwacja)
+    activate DB
+    DB --> RezCtrl : success
+    deactivate DB
+    
+    RezCtrl -> Grupa : zwolnijMiejsce()
+    activate Grupa
+    Grupa --> RezCtrl : ok
+    deactivate Grupa
+    
+    RezCtrl --> UI : potwierdzenieAnulowania
+    UI --> Kursant : "Rezerwacja anulowana. Miejsce zostało zwolnione dla innych."
+
+else czas_do_zajec < timedelta(hours=24)
+    
+    RezCtrl --> UI : odrzucenie("Zbyt mało czasu do zajęć")
+    UI --> Kursant : "Błąd: Za późno na bezpłatne anulowanie zajęć."
+
+end
+
+deactivate RezCtrl
+deactivate UI
+
+== Tworzenie harmonogramu (Blokowanie konfliktów) ==
+
+Admin -> UI : przypiszZajecia(grupa_id, tor_id, instruktor_id, czas)
+activate UI
+
+UI -> HarmCtrl : sprawdzIZapiszHarmonogram(dane_zajec_dict)
+activate HarmCtrl
+
+HarmCtrl -> DB : pobierzNakladajaceSieZajecia(tor_id, instruktor_id, czas)
+activate DB
+DB --> HarmCtrl : lista_konfliktow
+deactivate DB
+
+alt len(lista_konfliktow) > 0
+    HarmCtrl -> HarmCtrl : wykrytoKonflikt()
+    HarmCtrl --> UI : błądKolizji("Instruktor zajęty lub Tor zajęty")
+    UI --> Admin : "System technicznie uniemożliwia utworzenie konfliktu!"
+else len(lista_konfliktow) == 0
+    HarmCtrl -> DB : zapiszZajeciaWPlanu(...)
+    activate DB
+    DB --> HarmCtrl : sukces
+    deactivate DB
+    
+    HarmCtrl --> UI : sukces
+    UI --> Admin : "Zajęcia zapisane w harmonogramie"
+end
+
+deactivate HarmCtrl
+deactivate UI
+@enduml

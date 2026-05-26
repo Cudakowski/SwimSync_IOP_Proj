@@ -1,0 +1,170 @@
+@startuml
+title Diagram Sekwencji - Realizacja, Powiadomienia i Raporty
+
+actor "Instruktor" as Instruktor
+actor "Administrator" as Admin
+actor "Kursant" as Kursant
+
+boundary "System/Aplikacja\n<<UI>>" as UI
+boundary "System Cron\n<<Trigger>>" as Cron
+control "ObecnoscController\n<<Control>>" as ObecnoscCtrl
+control "RaportController\n<<Control>>" as RaportCtrl
+control "PowiadomieniaController\n<<Control>>" as NotifCtrl
+control "HarmonogramController\n<<Control>>" as HarmCtrl
+entity "Obecnosc\n<<Entity>>" as Obecnosc
+entity "Raport\n<<Entity>>" as Raport
+database "BazaDanych\n<<DB>>" as DB
+
+== Sprawdzanie obecności po zajęciach (Instruktor) ==
+
+Instruktor -> UI : oznaczObecnosci(zajecia_id, lista_obecnych_ids)
+activate UI
+
+UI -> ObecnoscCtrl : zapiszFrekwencje(zajecia_id, lista_obecnych_ids)
+activate ObecnoscCtrl
+
+ObecnoscCtrl -> DB : pobierzZapisanychUczestnikow(zajecia_id)
+activate DB
+DB --> ObecnoscCtrl : lista_wszystkich_ids
+deactivate DB
+
+ObecnoscCtrl -> ObecnoscCtrl : lista_nieobecnych_ids = lista_wszystkich_ids - lista_obecnych_ids
+
+ObecnoscCtrl -> ObecnoscCtrl : przygotujPustaKolekcje()
+
+loop Dla każdego id w lista_obecnych_ids
+    create Obecnosc
+    ObecnoscCtrl -> Obecnosc : <<create>>(id, zajecia_id, status='obecny')
+    ObecnoscCtrl -> ObecnoscCtrl : dodajDoKolekcji()
+end
+
+loop Dla każdego id w lista_nieobecnych_ids
+    create Obecnosc
+    ObecnoscCtrl -> Obecnosc : <<create>>(id, zajecia_id, status='nieobecny')
+    ObecnoscCtrl -> ObecnoscCtrl : dodajDoKolekcji()
+end
+
+ObecnoscCtrl -> DB : bulk_insert(kolekcja_obiektow_obecnosci)
+activate DB
+DB --> ObecnoscCtrl : sukces (zapisano pełną listę)
+deactivate DB
+
+ObecnoscCtrl --> UI : potwierdzenieZapisu
+deactivate ObecnoscCtrl
+
+UI --> Instruktor : "Kompletna frekwencja została zapisana."
+deactivate UI
+
+== Generowanie zbiorczych zestawień (Administrator) ==
+
+Admin -> UI : generujRaport(typ_raportu, parametry_dict)
+activate UI
+
+UI -> RaportCtrl : utworzZestawienie(typ_raportu, parametry_dict)
+activate RaportCtrl
+
+create Raport
+RaportCtrl -> Raport : <<create>>()
+
+alt typ_raportu == "Frekwencja Grup"
+    RaportCtrl -> DB : pobierzZarejestrowaneObecnosci(parametry_dict)
+    activate DB
+    DB --> RaportCtrl : dane_frekwencji
+    deactivate DB
+    
+    RaportCtrl -> Raport : agregujPopularnosc(dane_frekwencji)
+    activate Raport
+    Raport --> RaportCtrl : wynikAgregacji
+    deactivate Raport
+
+else typ_raportu == "Godziny Instruktorów"
+    RaportCtrl -> DB : pobierzOdbyteZajecia(miesiac)
+    activate DB
+    DB --> RaportCtrl : dane_zajec
+    deactivate DB
+    
+    RaportCtrl -> Raport : obliczPrzepracowaneGodziny(dane_zajec)
+    activate Raport
+    Raport --> RaportCtrl : wynikObliczen
+    deactivate Raport
+end
+
+RaportCtrl -> Raport : generujPlik()
+activate Raport
+Raport --> RaportCtrl : gotowy_plik_csv_pdf
+deactivate Raport
+
+RaportCtrl --> UI : plikRaportu
+deactivate RaportCtrl
+
+UI --> Admin : pobierzPlik()
+deactivate UI
+
+== Masowa wiadomość (np. awaria basenu) ==
+
+Admin -> UI : wyslijKomunikatMasowy(grupa_docelowa, tresc)
+activate UI
+
+UI -> NotifCtrl : broadcastMessage(grupa_docelowa, tresc)
+activate NotifCtrl
+
+NotifCtrl -> DB : pobierzAdresyEmail(grupa_docelowa)
+activate DB
+DB --> NotifCtrl : lista_maili
+deactivate DB
+
+loop Dla każdego email w lista_maili
+    NotifCtrl -> NotifCtrl : send_email(email, tresc)
+    activate NotifCtrl
+    deactivate NotifCtrl
+end
+
+NotifCtrl --> UI : wyslano
+deactivate NotifCtrl
+
+UI --> Admin : "Powiadomienie dotarło do użytkowników"
+deactivate UI
+
+== PROCES W TLE (CRON): Przypomnienia o zajęciach ==
+
+autonumber
+Cron -> NotifCtrl : cronJob_sprawdzHarmonogram()
+activate NotifCtrl
+
+NotifCtrl -> DB : pobierzZajeciaJutro()
+activate DB
+DB --> NotifCtrl : lista_zajec_jutro
+deactivate DB
+
+loop Dla każdych zajęć
+    NotifCtrl -> DB : pobierzUczestnikow(zajecia.id)
+    activate DB
+    DB --> NotifCtrl : uczestnicy_zajec
+    deactivate DB
+    
+    par Powiadamianie równoległe
+        NotifCtrl -> Kursant : [System] Przypomnienie: "Zajęcia jutro o 18:00"
+    end
+end
+deactivate NotifCtrl
+
+== POWIADOMIENIA O ZMIANACH W GRAFIKU ==
+
+autonumber stop
+opt Jeśli administrator wymusił zmianę w grafiku
+    HarmCtrl -> NotifCtrl : trigger_zmianaHarmonogramu(zajecia_id)
+    activate NotifCtrl
+    
+    NotifCtrl -> DB : pobierzZainteresowanych(zajecia_id)
+    activate DB
+    DB --> NotifCtrl : instruktor, uczestnicy
+    deactivate DB
+    
+    par Równoległe powiadamianie o zmianach
+        NotifCtrl -> Instruktor : [System] "Uwaga, zmieniono tor/godzinę twoich zajęć"
+        NotifCtrl -> Kursant : [System] "Uwaga, nastąpiła zmiana w twoim planie zajęć"
+    end
+    deactivate NotifCtrl
+end
+
+@enduml

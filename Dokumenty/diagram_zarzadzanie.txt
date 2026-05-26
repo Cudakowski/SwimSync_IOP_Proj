@@ -1,0 +1,234 @@
+@startuml
+title Diagram Sekwencji - Zarządzanie Użytkownikami, Infrastrukturą i Grupami
+
+actor "Administrator" as Admin
+actor "Kursant" as Kursant
+actor "Instruktor" as Instruktor
+
+boundary "Interfejs Webowy\n<<UI>>" as UI
+control "ZarzadzanieController\n<<Control>>" as Ctrl
+control "PowiadomieniaController\n<<Control>>" as NotifCtrl
+entity "ProfilUzytkownika\n<<Entity>>" as Profil
+entity "TorBasenowy\n<<Entity>>" as Tor
+entity "GrupaPlywacka\n<<Entity>>" as Grupa
+entity "Harmonogram\n<<Entity>>" as Harmonogram
+database "BazaDanych\n<<DB>>" as DB
+
+== Zakładanie i edycja profilu (Kursant) ==
+
+Kursant -> UI : wypelnijDaneProfilu(wiek, poziom_zaawansowania)
+activate UI
+
+UI -> Ctrl : aktualizujProfil(user_id, wiek, poziom)
+activate Ctrl
+
+Ctrl -> Profil : znajdzLubUtworz(user_id)
+activate Profil
+Profil --> Ctrl : obiektProfil
+' Profil
+
+Ctrl -> Profil : set_attributes(wiek, poziom)
+'activate Profil
+Profil --> Ctrl : ok
+deactivate Profil
+
+Ctrl -> DB : save(obiektProfil)
+activate DB
+DB --> Ctrl : sukces
+deactivate DB
+
+Ctrl --> UI : profilZaktualizowany
+deactivate Ctrl
+
+UI --> Kursant : "Profil zaktualizowany, oferta dostosowana"
+deactivate UI
+
+== Dodawanie opisu kwalifikacji (Instruktor) ==
+
+Instruktor -> UI : dodajOpis(kwalifikacje_text)
+activate UI
+
+UI -> Ctrl : aktualizujOpisInstruktora(instruktor_id, kwalifikacje_text)
+activate Ctrl
+
+Ctrl -> Profil : znajdz(instruktor_id)
+activate Profil
+Profil --> Ctrl : obiektProfil
+'deactivate Profil
+
+Ctrl -> Profil : set_description(kwalifikacje_text)
+'activate Profil
+Profil --> Ctrl : ok
+deactivate Profil
+
+Ctrl -> DB : save(obiektProfil)
+activate DB
+DB --> Ctrl : sukces
+deactivate DB
+
+Ctrl --> UI : potwierdzenieZapisania
+deactivate Ctrl
+
+UI --> Instruktor : "Opis widoczny dla kursantów"
+deactivate UI
+
+== Resetowanie hasła (Administrator) ==
+
+Admin -> UI : wyszukajUzytkownika(email)
+activate UI
+
+UI -> Ctrl : szukajKonta(email)
+activate Ctrl
+
+Ctrl -> DB : query(email)
+activate DB
+DB --> Ctrl : user_record
+deactivate DB
+
+Ctrl --> UI : user_record
+deactivate Ctrl
+
+UI --> Admin : wynikiWyszukiwania
+deactivate UI
+
+Admin -> UI : zresetujHaslo(user_id)
+activate UI
+
+UI -> Ctrl : generujNoweHaslo(user_id)
+activate Ctrl
+
+Ctrl -> Profil : generate_temp_password()
+activate Profil
+Profil --> Ctrl : hash_hasla
+deactivate Profil
+
+Ctrl -> DB : save_password_hash(user_id, hash_hasla)
+activate DB
+DB --> Ctrl : sukces
+deactivate DB
+
+Ctrl --> UI : nowe_haslo_lub_link
+deactivate Ctrl
+
+UI --> Admin : "Hasło zresetowane pomyślnie"
+deactivate UI
+
+== Definiowanie i walidacja pojemności torów basenowych (Administrator) ==
+
+Admin -> UI : ustawPojemnoscToru(tor_id, nowa_pojemnosc)
+activate UI
+
+UI -> Ctrl : zaktualizujPojemnosc(tor_id, nowa_pojemnosc)
+activate Ctrl
+
+Ctrl -> Tor : find(tor_id)
+activate Tor
+Tor --> Ctrl : obiektTor
+deactivate Tor
+
+Ctrl -> DB : pobierzAktywneGrupyDlaToru(tor_id)
+activate DB
+DB --> Ctrl : lista_grup
+deactivate DB
+
+Ctrl -> Ctrl : sprawdzWielkoscGrup(lista_grup, nowa_pojemnosc)
+
+alt istnieje grupa.liczba_kursantow > nowa_pojemnosc
+    
+    Ctrl --> UI : bladWalidacji(konfliktowe_grupy_ids)
+    UI --> Admin : "Uwaga: Zmniejszenie pojemności niemożliwe. \nNajpierw przenieś nadmiarowych kursantów z grup przypisanych do toru."
+
+else wszystkie grupy <= nowa_pojemnosc
+    
+    Ctrl -> Tor : set_max_capacity(nowa_pojemnosc)
+    activate Tor
+    Tor --> Ctrl : ok
+    deactivate Tor
+
+    Ctrl -> DB : save(obiektTor)
+    activate DB
+    DB --> Ctrl : sukces
+    deactivate DB
+
+    Ctrl --> UI : potwierdzenie
+    UI --> Admin : "Pojemność toru została pomyślnie zaktualizowana."
+
+end
+deactivate Ctrl
+deactivate UI
+
+== Tworzenie nowych grup pływackich (Administrator) ==
+
+Admin -> UI : utworzGrupe(max_wielkosc, wiek, poziom)
+activate UI
+
+UI -> Ctrl : stworzNowaGrupe(dane_grupy_dict)
+activate Ctrl
+
+create Grupa
+Ctrl -> Grupa : <<create>>(dane_grupy_dict)
+
+Ctrl -> DB : insert(Grupa)
+activate DB
+DB --> Ctrl : grupa_id
+deactivate DB
+
+Ctrl --> UI : potwierdzenie(grupa_id)
+deactivate Ctrl
+
+UI --> Admin : "Grupa utworzona, gotowa do planowania"
+deactivate UI
+
+== Zgłaszanie niedostępności (Instruktor) ==
+
+Instruktor -> UI : zglosNiedostepnosc(start_date, end_date)
+activate UI
+
+UI -> Ctrl : zablokujTermin(instruktor_id, start_date, end_date)
+activate Ctrl
+
+Ctrl -> DB : pobierzZaplanowaneZajecia(instruktor_id, start_date, end_date)
+activate DB
+DB --> Ctrl : lista_zajec
+deactivate DB
+
+alt len(lista_zajec) > 0
+    
+    Ctrl -> NotifCtrl : zglosKoniecznoscZastepstwa(instruktor_id, lista_zajec)
+    activate NotifCtrl
+    NotifCtrl -> Admin : "Uwaga: Instruktor niedostępny. \nWymagane zastępstwo lub odwołanie zajęć."
+    deactivate NotifCtrl
+
+    Ctrl -> Harmonogram : dodajBlokade(instruktor_id, start_date, end_date, konflikt=True)
+    activate Harmonogram
+    Harmonogram --> Ctrl : ok
+    deactivate Harmonogram
+
+    Ctrl -> DB : save(Harmonogram)
+    activate DB
+    DB --> Ctrl : sukces
+    deactivate DB
+
+    Ctrl --> UI : potwierdzenieZKonfliktem
+    UI --> Instruktor : "Niedostępność zapisana. Miałeś zaplanowane zajęcia w tym czasie. \nAdministrator został powiadomiony o konieczności zastępstwa."
+
+else len(lista_zajec) == 0
+    
+    Ctrl -> Harmonogram : dodajBlokade(instruktor_id, start_date, end_date, konflikt=False)
+    activate Harmonogram
+    Harmonogram --> Ctrl : ok
+    deactivate Harmonogram
+
+    Ctrl -> DB : save(Harmonogram)
+    activate DB
+    DB --> Ctrl : sukces
+    deactivate DB
+
+    Ctrl --> UI : potwierdzenie
+    UI --> Instruktor : "Termin zablokowany. W tym czasie nie miałeś żadnych zaplanowanych zajęć."
+
+end
+
+deactivate Ctrl
+deactivate UI
+@enduml
