@@ -1,0 +1,453 @@
+@startuml
+title Diagram Klas - Zakładanie i edycja profilu
+
+class InterfejsWebowy <<UI>> {
+    + wypelnijDaneProfilu(wiek: int, poziom_zaawansowania: str): void
+    + dostosujWidoczneGrupy(wiek: int, poziom: str): void
+}
+
+class ZarzadzanieController <<Control>> {
+    + aktualizujProfil(user_id: int, wiek: int, poziom: str): void
+}
+
+class ProfilUzytkownika <<Entity>> {
+    + user_id: int
+    + wiek: int
+    + poziom_zaawansowania: str
+    + znajdzLubUtworz(user_id: int): ProfilUzytkownika
+    + set_attributes(wiek: int, poziom: str): bool
+}
+
+class BazaDanych <<DB>> {
+    + save(obiekt: object): bool
+}
+
+InterfejsWebowy --> ZarzadzanieController : używa
+ZarzadzanieController --> ProfilUzytkownika : modyfikuje
+ZarzadzanieController --> BazaDanych : zapisuje
+@enduml
+
+
+
+
+
+@startuml
+title Diagram Klas - Dodawanie opisu kwalifikacji
+
+class InterfejsWebowy <<UI>> {
+    + dodajOpis(kwalifikacje_text: str): void
+}
+
+class ZarzadzanieController <<Control>> {
+    + aktualizujOpisInstruktora(instruktor_id: int, kwalifikacje_text: str): void
+}
+
+class ProfilUzytkownika <<Entity>> {
+    + instruktor_id: int
+    + kwalifikacje: str
+    + znajdz(instruktor_id: int): ProfilUzytkownika
+    + set_description(kwalifikacje_text: str): bool
+}
+
+class BazaDanych <<DB>> {
+    + save(obiekt: object): bool
+}
+
+InterfejsWebowy --> ZarzadzanieController : używa
+ZarzadzanieController --> ProfilUzytkownika : modyfikuje
+ZarzadzanieController --> BazaDanych : zapisuje
+@enduml
+
+
+
+
+
+@startuml
+title Diagram Klas - Resetowanie hasła
+
+class InterfejsWebowy <<UI>> {
+    + wyszukajUzytkownika(email: str): void
+    + zresetujHaslo(user_id: int): void
+}
+
+class ZarzadzanieController <<Control>> {
+    + szukajKonta(email: str): dict
+    + generujNoweHaslo(user_id: int): str
+}
+
+class ProfilUzytkownika <<Entity>> {
+    + generate_temp_password(): str
+}
+
+class BazaDanych <<DB>> {
+    + query(email: str): dict
+    + save_password_hash(user_id: int, hash_hasla: str): bool
+}
+
+InterfejsWebowy --> ZarzadzanieController : używa
+ZarzadzanieController --> BazaDanych : odpytuje/zapisuje
+ZarzadzanieController --> ProfilUzytkownika : generuje hasło
+@enduml
+
+
+
+
+
+@startuml
+title Diagram Klas - Definiowanie pojemności torów basenowych
+
+class InterfejsWebowy <<UI>> {
+    + ustawPojemnoscToru(tor_id: int, nowa_pojemnosc: int): void
+    + bladWalidacji(konfliktowe_grupy_ids: list): void
+}
+
+class ZarzadzanieController <<Control>> {
+    + zaktualizujPojemnosc(tor_id: int, nowa_pojemnosc: int): void
+    - sprawdzWielkoscGrup(lista_grup: list, nowa_pojemnosc: int): bool
+}
+
+class TorBasenowy <<Entity>> {
+    + tor_id: int
+    + max_pojemnosc: int
+    + find(tor_id: int): TorBasenowy
+    + set_max_capacity(nowa_pojemnosc: int): bool
+}
+
+class BazaDanych <<DB>> {
+    + pobierzAktywneGrupyDlaToru(tor_id: int): list
+    + save(obiekt: object): bool
+}
+
+InterfejsWebowy --> ZarzadzanieController : wywołuje
+ZarzadzanieController --> TorBasenowy : modyfikuje
+ZarzadzanieController --> BazaDanych : weryfikuje i zapisuje
+@enduml
+
+
+
+
+
+@startuml
+title Diagram Klas - Tworzenie nowych grup pływackich
+
+class InterfejsWebowy <<UI>> {
+    + utworzGrupe(max_wielkosc: int, wiek: int, poziom: str): void
+}
+
+class ZarzadzanieController <<Control>> {
+    + stworzNowaGrupe(dane_grupy_dict: dict): int
+}
+
+class GrupaPlywacka <<Entity>> {
+    + max_wielkosc: int
+    + wiek: int
+    + poziom: str
+    + __init__(dane_grupy_dict: dict)
+}
+
+class BazaDanych <<DB>> {
+    + insert(obiekt: object): int
+}
+
+InterfejsWebowy --> ZarzadzanieController : używa
+ZarzadzanieController ..> GrupaPlywacka : tworzy instancję (<<create>>)
+ZarzadzanieController --> BazaDanych : insert
+@enduml
+
+
+
+
+@startuml
+title Diagram Klas - Zgłaszanie niedostępności
+
+class InterfejsWebowy <<UI>> {
+    + zglosNiedostepnosc(start_date: datetime, end_date: datetime): void
+}
+
+class ZarzadzanieController <<Control>> {
+    + zablokujTermin(instruktor_id: int, start_date: datetime, end_date: datetime): void
+}
+
+class PowiadomieniaController <<Control>> {
+    + zglosKoniecznoscZastepstwa(instruktor_id: int, lista_zajec: list): void
+}
+
+class Harmonogram <<Entity>> {
+    + dodajBlokadeInstruktora(instruktor_id: int, start_date: datetime, end_date: datetime, konflikt: bool): bool
+}
+
+class BazaDanych <<DB>> {
+    + pobierzZaplanowaneZajecia(instruktor_id: int, start_date: datetime, end_date: datetime): list
+    + save(obiekt: object): bool
+}
+
+InterfejsWebowy --> ZarzadzanieController : używa
+ZarzadzanieController --> PowiadomieniaController : wyzwala powiadomienie
+ZarzadzanieController --> Harmonogram : aktualizuje
+ZarzadzanieController --> BazaDanych : odpytuje/zapisuje
+@enduml
+
+
+
+
+@startuml
+title Diagram Klas - Rezerwacja miejsca w grupie
+
+class PortalZapisow <<UI>> {
+    + zapiszNaZajecia(zajecia_id: int): void
+    + błąd(wiadomosc: str): void
+}
+
+class RezerwacjeController <<Control>> {
+    + procesujZapis(kursant_id: int, zajecia_id: int): void
+}
+
+class GrupaPlywacka <<Entity>> {
+    + sprawdzWolneMiejsca(zajecia_id: int): int
+}
+
+class TorBasenowy <<Entity>> {
+    + pobierzLimit(): int
+}
+
+class Rezerwacja <<Entity>> {
+    + kursant_id: int
+    + zajecia_id: int
+    + __init__(kursant_id: int, zajecia_id: int)
+}
+
+class BazaDanych <<DB>> {
+    + insert(obiekt: object): bool
+}
+
+PortalZapisow --> RezerwacjeController : żądanie zapisu
+RezerwacjeController --> GrupaPlywacka : sprawdza miejsca
+GrupaPlywacka --> TorBasenowy : sprawdza limity
+RezerwacjeController ..> Rezerwacja : tworzy (<<create>>)
+RezerwacjeController --> BazaDanych : insert
+@enduml
+
+
+
+
+
+@startuml
+title Diagram Klas - Zapis na cały cykl zajęć
+
+class PortalZapisow <<UI>> {
+    + zapiszNaCykl(cykl_id: int): void
+}
+
+class RezerwacjeController <<Control>> {
+    + zapiszNaWieleZajec(kursant_id: int, cykl_id: int): void
+}
+
+class GrupaPlywacka <<Entity>> {
+    + sprawdzMiejsca(zajecia: dict): bool
+}
+
+class Rezerwacja <<Entity>> {
+    + __init__(kursant_id: int, zajecia_id: int)
+}
+
+class BazaDanych <<DB>> {
+    + pobierzWszystkieZajeciaDlaCyklu(cykl_id: int): list
+    + insert(obiekt: object): bool
+}
+
+PortalZapisow --> RezerwacjeController : żądanie
+RezerwacjeController --> BazaDanych : pobiera strukturę cyklu / insert
+RezerwacjeController --> GrupaPlywacka : sprawdza wolne miejsca iteracyjnie
+RezerwacjeController ..> Rezerwacja : tworzy instancje
+@enduml
+
+
+
+
+
+@startuml
+title Diagram Klas - Anulowanie obecności (Soft Delete)
+
+class PortalZapisow <<UI>> {
+    + anulujZajecia(rezerwacja_id: int): void
+    + odrzucenie(wiadomosc: str): void
+}
+
+class RezerwacjeController <<Control>> {
+    + procesujAnulowanie(rezerwacja_id: int): void
+}
+
+class Rezerwacja <<Entity>> {
+    + status: str
+    + zmienStatus(nowy_status: str): bool
+}
+
+class GrupaPlywacka <<Entity>> {
+    + zwolnijMiejsce(): bool
+}
+
+class BazaDanych <<DB>> {
+    + pobierzRezerwacjeIZajecia(rezerwacja_id: int): tuple
+    + save(obiekt: object): bool
+}
+
+PortalZapisow --> RezerwacjeController : wywołuje
+RezerwacjeController --> BazaDanych : pobiera daty / zapisuje status
+RezerwacjeController --> Rezerwacja : aktualizuje status (soft delete)
+RezerwacjeController --> GrupaPlywacka : modyfikuje (wznawia miejsce)
+@enduml
+
+
+@startuml
+title Diagram Klas - Tworzenie harmonogramu
+
+class PortalZapisow <<UI>> {
+    + przypiszZajecia(grupa_id: int, tor_id: int, instruktor_id: int, czas: datetime): void
+    + błądKolizji(wiadomosc: str): void
+}
+
+class HarmonogramController <<Control>> {
+    + sprawdzIZapiszHarmonogram(dane_zajec_dict: dict): void
+    - wykrytoKonflikt(): void
+}
+
+class BazaDanych <<DB>> {
+    + pobierzNakladajaceSieZajecia(tor_id: int, instruktor_id: int, czas: datetime): list
+    + zapiszZajeciaWPlanu(dane: dict): bool
+}
+
+PortalZapisow --> HarmonogramController : wywołuje
+HarmonogramController --> BazaDanych : waliduje konflikty / zapisuje
+@enduml
+
+
+@startuml
+title Diagram Klas - Sprawdzanie obecności (Bulk Insert)
+
+class SystemAplikacja <<UI>> {
+    + oznaczObecnosci(zajecia_id: int, lista_obecnych_ids: list): void
+}
+
+class ObecnoscController <<Control>> {
+    + zapiszFrekwencje(zajecia_id: int, lista_obecnych_ids: list): void
+    - przygotujPustaKolekcje(): void
+    - dodajDoKolekcji(): void
+}
+
+class Obecnosc <<Entity>> {
+    + uzytkownik_id: int
+    + zajecia_id: int
+    + status: str
+    + __init__(id: int, zajecia_id: int, status: str)
+}
+
+class BazaDanych <<DB>> {
+    + pobierzZapisanychUczestnikow(zajecia_id: int): list
+    + bulk_insert(kolekcja_obiektow: list): bool
+}
+
+SystemAplikacja --> ObecnoscController : wysyła listę
+ObecnoscController --> BazaDanych : pobiera wszystkich / bulk insert
+ObecnoscController ..> Obecnosc : instancjonuje (w pętli)
+@enduml
+
+
+@startuml
+title Diagram Klas - Generowanie zbiorczych zestawień
+
+class SystemAplikacja <<UI>> {
+    + generujRaport(typ_raportu: str, parametry_dict: dict): void
+    + pobierzPlik(): void
+}
+
+class RaportController <<Control>> {
+    + utworzZestawienie(typ_raportu: str, parametry_dict: dict): void
+}
+
+class Raport <<Entity>> {
+    + __init__()
+    + agregujPopularnosc(dane_frekwencji: list): dict
+    + obliczPrzepracowaneGodziny(dane_zajec: list): dict
+    + generujPlik(): File
+}
+
+class BazaDanych <<DB>> {
+    + pobierzZarejestrowaneObecnosci(parametry_dict: dict): list
+    + pobierzOdbyteZajecia(miesiac: int): list
+}
+
+SystemAplikacja --> RaportController : zleca raport
+RaportController --> BazaDanych : odpytuje na podstawie typu
+RaportController ..> Raport : tworzy instancję
+RaportController --> Raport : zleca obliczenia i plik
+@enduml
+
+
+
+
+@startuml
+title Diagram Klas - Masowa wiadomość
+
+class SystemAplikacja <<UI>> {
+    + wyslijKomunikatMasowy(grupa_docelowa: str, tresc: str): void
+}
+
+class PowiadomieniaController <<Control>> {
+    + broadcastMessage(grupa_docelowa: str, tresc: str): void
+    - send_email(email: str, tresc: str): bool
+}
+
+class BazaDanych <<DB>> {
+    + pobierzAdresyEmail(grupa_docelowa: str): list
+}
+
+SystemAplikacja --> PowiadomieniaController : wywołuje
+PowiadomieniaController --> BazaDanych : pobiera adresy
+PowiadomieniaController --> PowiadomieniaController : wew. wysyłka e-mail
+@enduml
+
+
+
+
+@startuml
+title Diagram Klas - CRON Przypomnienia
+
+class SystemCron <<Trigger>> {
+    + cronJob_sprawdzHarmonogram(): void
+}
+
+class PowiadomieniaController <<Control>> {
+    + cronJob_sprawdzHarmonogram(): void
+    - wyslijPowiadomienie(user_id: int, msg: str): void
+}
+
+class BazaDanych <<DB>> {
+    + pobierzZajeciaJutro(): list
+    + pobierzUczestnikow(zajecia_id: int): list
+}
+
+SystemCron --> PowiadomieniaController : wyzwala akcję (CRON)
+PowiadomieniaController --> BazaDanych : analizuje harmonogram
+@enduml
+
+
+
+
+@startuml
+title Diagram Klas - Powiadomienia o zmianach w grafiku
+
+class HarmonogramController <<Control>> {
+    + trigger_zmianaHarmonogramu(zajecia_id: int): void
+}
+
+class PowiadomieniaController <<Control>> {
+    + trigger_zmianaHarmonogramu(zajecia_id: int): void
+}
+
+class BazaDanych <<DB>> {
+    + pobierzZainteresowanych(zajecia_id: int): tuple
+}
+
+HarmonogramController --> PowiadomieniaController : wysyła sygnał o zmianie
+PowiadomieniaController --> BazaDanych : pobiera powiązanych kursantów i instruktorów
+@enduml
